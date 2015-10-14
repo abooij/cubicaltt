@@ -1,0 +1,276 @@
+module chain where
+
+import prelude
+import sigma
+import pi
+import nat
+import bool
+
+import util
+
+binSeq : U = nat -> bool
+
+-- type1 = type2 = type3 = type4
+
+-- alpha : type1
+type1Proof (alpha : binSeq) : U = (n : nat) -> Id bool (alpha n) false -> Id bool (alpha (suc n)) false
+type1 : U = sig binSeq type1Proof
+
+exSeq1 : binSeq = split
+  zero  -> true
+  suc n -> false
+
+exSeq1proof : type1Proof exSeq1 = \(n : nat) -> \(_ : Id bool (exSeq1 n) false) -> refl bool false
+
+-- beta : type2
+type2Proof (beta : binSeq) : U = (i j : nat) -> Id bool (beta i) true -> Id bool (beta j) true -> Id nat i j
+type2 : U = sig binSeq type2Proof
+
+delaySeqOne (alpha : binSeq) (n : nat) : bool = alpha (pred n)
+
+delaySeq : nat -> binSeq -> binSeq = split
+  zero  -> idfun binSeq
+  suc n -> \(alpha : binSeq) -> delaySeq n (delaySeqOne alpha)
+
+exDel5 : binSeq = delaySeq n5 exSeq1
+
+seq1Reverse (alpha : binSeq) (proof : type1Proof alpha) (n : nat) (p : Id bool (alpha (suc n)) true) : Id bool (alpha n) true =
+  deduce (alpha n) (refl bool (alpha n))
+    where
+    deduce : (b : bool) -> (Id bool (alpha n) b) -> Id bool (alpha n) true = split
+      false -> \(q : Id bool (alpha n) false) -> efq (Id bool (alpha n) true)
+        (trueNeqFalse
+	  (compIdInv' bool true (alpha (suc n)) false p (proof n q))
+	)
+      true  -> idfun (Id bool (alpha n) true)
+
+measureSeq1 (alpha : binSeq) : (k : nat) -> bool = split
+  zero  -> true
+  suc m -> andBool (alpha m) (measureSeq1 alpha m)
+
+seq1ToSeq2 (alpha : binSeq) (k : nat) : bool =
+  andBool (measureSeq1 alpha k) (negBool (alpha k))
+
+seq2Deduce (alpha : binSeq) (m : nat) (k : nat) (p : Id bool ((seq1ToSeq2 alpha) (suc (add m k))) true) : Id bool (alpha m) true =
+  andLeft
+    (alpha m)
+    (measureSeq1 alpha m)
+    (deduce m k
+      (andLeft (measureSeq1 alpha (suc (add m k))) (negBool (alpha (suc (add m k)))) p)
+      )
+    where
+    deduce (m : nat) : (k : nat) -> Id bool (measureSeq1 alpha (suc (add m k))) true -> Id bool (measureSeq1 alpha (suc m)) true = split
+      zero  -> idfun (Id bool (measureSeq1 alpha (suc (add m zero))) true)
+      suc l -> \(p : Id bool (measureSeq1 alpha (suc (add m (suc l)))) true) -> deduce m l (continue (add m (suc l)) p)
+        where
+        continue (n : nat) (q : Id bool (measureSeq1 alpha (suc n)) true) : Id bool (measureSeq1 alpha n) true =
+          andRight (alpha n) (measureSeq1 alpha n) q
+
+seq2Notice (alpha : binSeq) (k : nat) (p : Id bool ((seq1ToSeq2 alpha) k) true) : Id bool (alpha k) false =
+  negBoolTrue (alpha k) (andRight (measureSeq1 alpha k) (negBool (alpha k)) p)
+
+--f1 : type1 -> binSeq = split
+--  s -> \(n : nat) ->
+
+seq2Extract (alpha : binSeq) (i j : nat) (p : Id bool ((seq1ToSeq2 alpha) i) true) (q : Id bool ((seq1ToSeq2 alpha) j) true) : Id nat i j =
+  cases (compare i j)
+    where
+    cases : (natOrdering i j) -> Id nat i j = split
+      lessOrd k r    -> efq (Id nat i j) (trueNeqFalse contra)
+        where
+        contra : Id bool true false =
+          compIdInv' bool true (alpha i) false
+            (seq2Deduce alpha i k q')
+            (seq2Notice alpha i p)
+          where
+            path1 : Id nat j (suc (add i k)) = compId nat j (suc (add k i)) (suc (add i k))
+	      r
+	      (mapOnPath nat nat suc' (add k i) (add i k) (add_comm k i))
+            q' : Id bool ((seq1ToSeq2 alpha) (suc (add i k))) true =
+	      subst nat (\(n : nat) -> Id bool ((seq1ToSeq2 alpha) n) true) j (suc (add i k)) path1 q
+      equalOrd r     -> r
+      greaterOrd k r -> efq (Id nat i j) (trueNeqFalse contra)
+        where
+        contra : Id bool true false =
+          compIdInv' bool true (alpha j) false
+            (seq2Deduce alpha j k p')
+            (seq2Notice alpha j q)
+          where
+            path1 : Id nat i (suc (add j k)) = compId nat i (suc (add k j)) (suc (add j k))
+	      r
+	      (mapOnPath nat nat suc' (add k j) (add j k) (add_comm k j))
+            p' : Id bool ((seq1ToSeq2 alpha) (suc (add j k))) true =
+	      subst nat (\(n : nat) -> Id bool ((seq1ToSeq2 alpha) n) true) i (suc (add j k)) path1 p
+
+f1 (p : type1) : type2 =
+  (seq1ToSeq2 p.1, seq2Extract p.1)
+
+scanSeq2 (beta : binSeq) : nat -> bool = split
+  zero  -> beta zero
+  suc n -> orBool (beta (suc n)) (scanSeq2 beta n)
+
+seq2ToSeq1 (beta : binSeq) (n : nat) : bool =
+  negBool (scanSeq2 beta n)
+
+seq1Extract (beta : binSeq) (n : nat) (p : Id bool ((seq2ToSeq1 beta) n) false) : Id bool ((seq2ToSeq1 beta) (suc n)) false =
+  mapOnPath bool bool negBool (scanSeq2 beta (suc n)) true scanSuc
+    where
+    inverted : Id bool (scanSeq2 beta n) true =
+      negBoolFalse (scanSeq2 beta n) p
+    scanSuc : Id bool (scanSeq2 beta (suc n)) true =
+      orBoolRight (beta (suc n)) (scanSeq2 beta n) inverted
+
+g1 (p : type2) : type1 =
+  (seq2ToSeq1 p.1, seq1Extract p.1)
+
+-- boolSet : set bool
+seq1Prop (alpha : binSeq) : prop (type1Proof alpha) =
+  propPi nat (\(n : nat) -> Id bool (alpha n) false -> Id bool (alpha (suc n)) false)
+    (\(n : nat) ->
+      propPi (Id bool (alpha n) false) (\(p : Id bool (alpha n) false) -> Id bool (alpha (suc n)) false)
+        (\(p : Id bool (alpha n) false) -> boolSet (alpha (suc n)) false)) -- magic happens here
+
+-- natSet : set nat (in nat.ctt)
+seq2Prop (beta : binSeq) : prop (type2Proof beta) =
+  propPi nat (\(i : nat) -> (j : nat) -> Id bool (beta i) true -> Id bool (beta j) true -> Id nat i j)
+    (\(i : nat) ->
+      propPi nat (\(j : nat) -> Id bool (beta i) true -> Id bool (beta j) true -> Id nat i j)
+        (\(j : nat) ->
+          propPi (Id bool (beta i) true) (\(_ : Id bool (beta i) true) -> Id bool (beta j) true -> Id nat i j)
+            (\(_ : Id bool (beta i) true) ->
+              propPi (Id bool (beta j) true) (\(_ : Id bool (beta j) true) -> Id nat i j)
+                (\(_ : Id bool (beta j) true) -> natSet i j -- magic happens here
+                )
+            )
+        )
+    )
+
+-- if s12 a n = t, then s1 a m = f forall m <= n
+seq1Lem1 (beta : binSeq) (n : nat) (p : Id bool (seq2ToSeq1 beta n) true) (m : nat) (t : lessEq m n) : Id bool (beta m) false =
+  extract m (
+    induct t.1 (subst nat (\(x : nat) -> Id bool (scanSeq2 beta x) false) n (add m t.1) (inv nat (add m t.1) n t.2) (negBoolTrue (scanSeq2 beta n) p))
+  )
+    where
+    induct : (k : nat) -> (Id bool (scanSeq2 beta (add m k)) false) -> Id bool (scanSeq2 beta m) false = split
+      zero  -> idfun (Id bool (scanSeq2 beta m) false)
+      suc l -> \(q : Id bool (scanSeq2 beta (add m (suc l))) false) -> induct l (orBoolFalseRight (beta (suc (add m l))) (scanSeq2 beta (add m l)) q)
+    extract : (m : nat) -> Id bool (scanSeq2 beta m) false -> Id bool (beta m) false = split
+      zero  -> idfun (Id bool (beta zero) false)
+      suc l -> orBoolFalseLeft (beta (suc l)) (scanSeq2 beta l)
+
+-- if s1 a m = f forall m <= n, then a n = t
+seq1Lem2 (alpha : binSeq) : (n : nat) -> (gen : (m : nat) -> lessEq m n -> Id bool (seq1ToSeq2 alpha m) false) -> Id bool (alpha n) true = split
+  zero  -> \(gen : (m : nat) -> lessEq m zero -> Id bool (seq1ToSeq2 alpha m) false) -> negBoolFalse (alpha zero) (andNegationRight' (negBool (alpha zero)) (gen zero (zeroLessEq zero)))
+  suc k -> \(gen : (m : nat) -> lessEq m (suc k) -> Id bool (seq1ToSeq2 alpha m) false) ->
+    negBoolFalse (alpha (suc k)) (
+      andNegationRight (measureSeq1 alpha (suc k)) (negBool (alpha (suc k))) (induct (suc k) gen) (gen (suc k) (nLessEqn (suc k)))
+    )
+    where
+    induct : (n : nat) -> (gen : (m : nat) -> lessEq m n -> Id bool (seq1ToSeq2 alpha m) false) -> Id bool (measureSeq1 alpha n) true = split
+      zero  -> \(_ : (m : nat) -> lessEq m zero -> Id bool (seq1ToSeq2 alpha m) false) -> refl bool true
+      suc l -> \(gen : (m : nat) -> lessEq m (suc l) -> Id bool (seq1ToSeq2 alpha m) false) ->
+        andTrueTrue (alpha l) (seq1Lem2 alpha l (genPred gen)) (measureSeq1 alpha l) (induct l (genPred gen))
+          where
+	  genPred (gen : (m : nat) -> lessEq m (suc l) -> Id bool (seq1ToSeq2 alpha m) false) (m : nat) (p : lessEq m l) : Id bool (seq1ToSeq2 alpha m) false =
+            gen m (sucLessEq m l p)
+
+-- if s12 a n = f, then exists m <= n with s1 a m = t
+seq1Lem3 (beta : binSeq) (n : nat) (p : Id bool (seq2ToSeq1 beta n) false) : ((m : nat) * ((_ : lessEq m n) * Id bool (beta m) true)) =
+  induct n (negBoolFalse (scanSeq2 beta n) p)
+    where
+    induct : (n : nat) -> Id bool (scanSeq2 beta n) true -> ((m : nat) * ((_ : lessEq m n) * Id bool (beta m) true)) = split
+      zero  -> \(q : Id bool (beta zero) true) -> (zero , (zeroLessEq zero , q))
+      suc l -> \(q : Id bool (scanSeq2 beta (suc l)) true) ->
+        cases q (beta (suc l)) (refl bool (beta (suc l)))
+	  where
+	  cases (q : Id bool (scanSeq2 beta (suc l)) true) : (a : bool) -> Id bool (beta (suc l)) a -> ((m : nat) * ((_ : lessEq m (suc l)) * Id bool (beta m) true)) = split
+	    false -> \(r : Id bool (beta (suc l)) false) -> ((val r).1 , (sucLessEq (val r).1 l (val r).2.1 , (val r).2.2))
+              where
+              val (r : Id bool (beta (suc l)) false) : ((m : nat) * ((_ : lessEq m l) * Id bool (beta m) true)) = induct l (orBoolTrueRight (beta (suc l)) (scanSeq2 beta l) r q) --(beta (suc l)) (scanSeq2 beta l) r q)
+	    true  -> \(r : Id bool (beta (suc l)) true)  -> ( suc l , (nLessEqn (suc l) , r))
+
+-- if s1 a m = t, then forall n>=m, a n = f
+seq1Lem4 (alpha : binSeq) (proof : type1Proof alpha) (m : nat) (p : Id bool (seq1ToSeq2 alpha m) true) (n : nat) (t : lessEq m n) : Id bool (alpha n) false =
+  subst nat (\(x : nat) -> Id bool (alpha x) false) (add m t.1) n t.2 (induct t.1 (negBoolTrue (alpha m) (andRight (measureSeq1 alpha m) (negBool (alpha m)) p)))
+    where
+    induct : (k : nat) -> Id bool (alpha m) false -> Id bool (alpha (add m k)) false = split
+      zero  -> idfun (Id bool (alpha m) false)
+      suc l -> \(p : Id bool (alpha m) false) -> proof (add m l) (induct l p)
+
+{-
+sps :
+s12 alpha m = f forall m <= n
+
+so s12 alpha 0 = f
+but measureseq1 alpha 0 = t (always)
+so neg a 0 = f
+so a 0 = t
+
+now s12 alpha 1 = f
+and measureseq1 alpha 1 = t (by induction)
+so neg a 1 = f
+so a 1 = t
+
+...
+
+now s12 alpha n = f
+and measureseq1 alpha n = t (by induction)
+so neg a n = f
+so a n = t
+-}
+
+{-
+lem (A:U) (P:A->U) (pP:(x:A) -> prop (P x)) (u v:(x:A) * P x) (p:Id A u.1 v.1) :
+ Id ((x:A)*P x) u v
+
+seq1Extract (beta : binSeq) (n : nat) (p : Id bool ((seq2ToSeq1 beta) n) false) : Id bool ((seq2ToSeq1 beta) (suc n)) false
+-}
+
+
+equiv1A (pair : type1) : Id binSeq (seq2ToSeq1 (seq1ToSeq2 pair.1)) pair.1 =
+  funExt nat (\(_ : nat) -> bool) (seq2ToSeq1 (seq1ToSeq2 alpha)) alpha
+    (\(n : nat) ->
+      inv bool (alpha n) (seq2ToSeq1 (seq1ToSeq2 alpha) n)
+        (cases n (seq2ToSeq1 (seq1ToSeq2 alpha) n) (refl bool (seq2ToSeq1 (seq1ToSeq2 alpha) n)))
+    )
+    where
+    alpha : binSeq = pair.1
+    proof : type1Proof alpha = pair.2
+    cases (n : nat) : (a : bool) -> Id bool (seq2ToSeq1 (seq1ToSeq2 alpha) n) a -> Id bool (alpha n) a = split
+      false -> \(p : Id bool (seq2ToSeq1 (seq1ToSeq2 alpha) n) false) ->
+        seq1Lem4 alpha proof
+          (seq1Lem3 (seq1ToSeq2 alpha) n p).1
+          (seq1Lem3 (seq1ToSeq2 alpha) n p).2.2
+          n
+          (seq1Lem3 (seq1ToSeq2 alpha) n p).2.1
+      true -> \(p : Id bool (seq2ToSeq1 (seq1ToSeq2 alpha) n) true) ->
+        seq1Lem2 alpha n (seq1Lem1 (seq1ToSeq2 alpha) n p)
+
+{-
+b n = t
+so scanSeq2 beta n = t
+so s1 b n = f
+
+lemma: if b n = t then scanseq2 beta m = f forall m < n (probably double induction)
+so s1 b m = t forall m < n
+
+so measureseq1 s1 b m = t forall m <= n (induction)
+so s21 b n = t
+
+---
+b n = f
+consider scanseq2 b n: either t
+
+
+need s21 b n = f, which happens if measureseq1 (s1 b) n = f or (s1 b n) = t
+for the former, we need s1 b m = f forall m < n
+for the latter, we need scanseq b m = f forall m <= n
+
+-}
+
+equiv1B (pair : type2) : Id binSeq (seq1ToSeq2 (seq2ToSeq1 pair.1)) pair.1 =
+  ?
+
+
+{-
+-}
