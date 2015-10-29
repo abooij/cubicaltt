@@ -85,7 +85,7 @@ seq2Extract (alpha : binSeq) (i j : nat) (p : Id bool ((seq1ToSeq2 alpha) i) tru
           where
             path1 : Id nat j (suc (add i k)) = compId nat j (suc (add k i)) (suc (add i k))
 	      r
-	      (mapOnPath nat nat suc' (add k i) (add i k) (add_comm k i))
+	      (<j> suc' (add_comm k i @ j))
             q' : Id bool ((seq1ToSeq2 alpha) (suc (add i k))) true =
 	      subst nat (\(n : nat) -> Id bool ((seq1ToSeq2 alpha) n) true) j (suc (add i k)) path1 q
       equalOrd r     -> r
@@ -98,7 +98,7 @@ seq2Extract (alpha : binSeq) (i j : nat) (p : Id bool ((seq1ToSeq2 alpha) i) tru
           where
             path1 : Id nat i (suc (add j k)) = compId nat i (suc (add k j)) (suc (add j k))
 	      r
-	      (mapOnPath nat nat suc' (add k j) (add j k) (add_comm k j))
+	      (<i> suc' (add_comm k j @ i))
             p' : Id bool ((seq1ToSeq2 alpha) (suc (add j k))) true =
 	      subst nat (\(n : nat) -> Id bool ((seq1ToSeq2 alpha) n) true) i (suc (add j k)) path1 p
 
@@ -113,7 +113,7 @@ seq2ToSeq1 (beta : binSeq) (n : nat) : bool =
   negBool (scanSeq2 beta n)
 
 seq1Extract (beta : binSeq) (n : nat) (p : Id bool ((seq2ToSeq1 beta) n) false) : Id bool ((seq2ToSeq1 beta) (suc n)) false =
-  mapOnPath bool bool negBool (scanSeq2 beta (suc n)) true scanSuc
+  <i> negBool (scanSuc @ i)
     where
     inverted : Id bool (scanSeq2 beta n) true =
       negBoolFalse (scanSeq2 beta n) p
@@ -256,17 +256,69 @@ so s1 b m = t forall m < n
 
 so measureseq1 s1 b m = t forall m <= n (induction)
 so s21 b n = t
+-}
 
----
+seq2Lem1 (beta : binSeq) (n : nat) (p : Id bool (beta n) true) : Id bool (seq2ToSeq1 beta n) false =
+  <i> negBool (induct n p @ i)
+    where
+    induct : (n : nat) -> Id bool (beta n) true -> Id bool (scanSeq2 beta n) true = split
+      zero  -> idfun (Id bool (beta zero) true)
+      suc l -> orBoolLeft (beta (suc l)) (scanSeq2 beta l)
+
+seq2Lem2 (beta : binSeq) (proof : type2Proof beta) (n : nat) (p : Id bool (beta n) true) : (m : nat) -> (t : lessEq (suc m) n) -> Id bool (scanSeq2 beta m) false = split
+  zero -> \(t : lessEq (suc zero) n) -> cases t (beta zero) (refl bool (beta zero))
+    where
+    -- t.2 : Id nat (add (suc zero) t.1) n
+    n_suc_k (t : lessEq (suc zero) n) : Id nat n (suc t.1) =
+      compIdInv' nat n (add (suc zero) t.1) (suc t.1)
+        t.2
+        (add_one t.1)
+    cases (t : lessEq (suc zero) n) : (a : bool) -> Id bool (beta zero) a -> Id bool (beta zero) false = split
+      false -> idfun (Id bool (beta zero) false)
+      true  -> \(q : Id bool (beta zero) true) -> efq (Id bool (beta zero) false) (znots t.1 (compId nat zero n (suc t.1)
+        (proof zero n q p) -- zero = n
+        (n_suc_k t) -- n = suc t.1
+        ))
+  suc l -> \(t : lessEq (suc (suc l)) n) -> orBoolFalseFalse (beta (suc l)) (scanSeq2 beta l)
+    (cases t (beta (suc l)) (refl bool (beta (suc l))))
+    (p1 t)
+    where
+    p1 (t : lessEq (suc (suc l)) n) : Id bool (scanSeq2 beta l) false = seq2Lem2 beta proof n p l (sucLessEq' (suc l) n t)
+    cases (t : lessEq (suc (suc l)) n) : (a : bool) -> Id bool (beta (suc l)) a -> Id bool (beta (suc l)) false = split
+      false -> idfun (Id bool (beta (suc l)) false)
+      true  -> \(q : Id bool (beta (suc l)) true) -> efq (Id bool (beta (suc l)) false) (lessEqIneq (suc l) n t (proof (suc l) n q p))
+
+seq2Lem3 (beta : binSeq) (proof : type2Proof beta) (n : nat) (p : Id bool (beta n) true) (m : nat) (t : lessEq (suc m) n) : Id bool (seq2ToSeq1 beta m) true =
+  <i> negBool (seq2Lem2 beta proof n p m t @ i)
+
+seq2Lem4 (beta : binSeq) (proof : type2Proof beta) (n : nat) (p : Id bool (beta n) true) : Id bool (seq1ToSeq2 (seq2ToSeq1 beta) n) true =
+  <i> andBool (induct n (nLessEqn n) @ i) (negBool (seq2Lem1 beta n p @ i))
+    where
+    induct : (m : nat) -> (t : lessEq m n) -> Id bool (measureSeq1 (seq2ToSeq1 beta) m) true = split
+      zero  -> \(_ : lessEq zero n) -> refl bool true
+      suc l -> \(t : lessEq (suc l) n) -> <i> andBool (seq2Lem3 beta proof n p l t @ i) (induct l (sucLessEq' l n t) @ i)
+
+{-
 b n = f
-consider scanseq2 b n: either t
-
 
 need s21 b n = f, which happens if measureseq1 (s1 b) n = f or (s1 b n) = t
-for the former, we need s1 b m = f forall m < n
-for the latter, we need scanseq b m = f forall m <= n
+for the former, we need s1 b m = f for some m < n
+for the latter, we need scanseq b m = f forall m <= n, ie b m = f forall m <= n
+
+former:
+need that scanseq b m = t for some m < n, ie b m = t for some m < n
 
 -}
+
+seq2Lem5 (beta : binSeq) (n : nat) (p : Id bool (beta n) false) : or ((m : nat) * ((_ : lessEq m n) * Id bool (beta m) true)) ((m : nat) -> (_ : lessEq m n) -> Id bool (beta m) false) = ?
+{-  induct n
+    where
+    induct : (o : nat) -> or ((m : nat) * ((_ : lessEq m o) * Id bool (beta m) true)) ((m : nat) -> (_ : lessEq m o) -> Id bool (beta m) false) = split
+      zero  -> cases (beta zero) (refl bool (beta zero))
+        where
+        cases : (a : bool) -> Id bool (beta zero) a -> or ((m : nat) * ((_ : lessEq m zero) * Id bool (beta m) true)) ((m : nat) -> (_ : lessEq m zero) -> Id bool (beta m) false) = split
+          false -> \(p : Id bool (beta zero) false) -> inr (\(m : nat) -> \(t : lessEq m zero) -> ?)
+      suc l -> \(p : Id bool (beta (suc l) false) -> ? --cases (seq2Lem5 beta )
 
 equiv1B (pair : type2) : Id binSeq (seq1ToSeq2 (seq2ToSeq1 pair.1)) pair.1 =
   ?
