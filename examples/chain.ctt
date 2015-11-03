@@ -26,6 +26,15 @@ exSeq1proof : type1Proof exSeq1 = \(n : nat) -> \(_ : Id bool (exSeq1 n) false) 
 type2Proof (beta : binSeq) : U = (i j : nat) -> Id bool (beta i) true -> Id bool (beta j) true -> Id nat i j
 type2 : U = sig binSeq type2Proof
 
+-- gamma : type3
+type3Proof (gamma : binSeq) : U = prop ((n : nat) * Id bool (gamma n) true)
+type3 : U = sig binSeq type3Proof
+
+propSeq : U = nat -> Prop
+-- wow. did you know the following is not well-type without the `.1`s? iow: propositions are not types.
+type4Proof (delta : propSeq) : U = and ((n : nat) -> dec (delta n).1) (prop ((n : nat) * (delta n).1))
+type4 : U = sig propSeq type4Proof
+
 delaySeqOne (alpha : binSeq) (n : nat) : bool = alpha (pred n)
 
 delaySeq : nat -> binSeq -> binSeq = split
@@ -144,6 +153,15 @@ seq2Prop (beta : binSeq) : prop (type2Proof beta) =
             )
         )
     )
+
+seq3Prop (gamma : binSeq) : prop (type3Proof gamma) =
+  propIsProp ((n : nat) * Id bool (gamma n) true)
+
+-- type4Proof (delta : propSeq) : U = and ((n : nat) -> dec (delta n).1) (prop ((n : nat) * (delta n).1))
+seq4Prop (delta : propSeq) : prop (type4Proof delta) =
+  propAnd ((n : nat) -> dec (delta n).1) (prop ((n : nat) * (delta n).1))
+    (propPi nat (\(n : nat) -> dec (delta n).1) (\(n : nat) -> propDec (delta n)))
+    (propIsProp ((n : nat) * (delta n).1))
 
 -- if s12 a n = t, then s1 a m = f forall m <= n
 seq1Lem1 (beta : binSeq) (n : nat) (p : Id bool (seq2ToSeq1 beta n) true) (m : nat) (t : lessEq m n) : Id bool (beta m) false =
@@ -447,6 +465,147 @@ equiv1 : Id U type1 type2 =
     (\(p : type2) -> lem binSeq type2Proof seq2Prop (f1 (g1 p)) p (equiv1B p))
     (\(p : type1) -> lem binSeq type1Proof seq1Prop (g1 (f1 p)) p (equiv1A p))
 
+{-
+type2Proof (beta : binSeq) : U = (i j : nat) -> Id bool (beta i) true -> Id bool (beta j) true -> Id nat i j
+type3Proof (gamma : binSeq) : U = prop ((n : nat) * Id bool (gamma n) true)
+-}
+
+-- seq2ToSeq3 and seq3ToSeq2 are just idfun binSeq
+
+seq3Extract (beta : binSeq) (proof : type2Proof beta) : type3Proof beta =
+  \(s t : (n : nat) * Id bool (beta n) true) ->
+    lem nat (\(n : nat) -> Id bool (beta n) true) (\(n : nat) -> boolSet (beta n) true) s t (proof s.1 t.1 s.2 t.2)
+
+seq2Extract' (gamma : binSeq) (proof : type3Proof gamma) (i : nat) (j : nat) (p : Id bool (gamma i) true) (q : Id bool (gamma j) true) : Id nat i j  =
+  lemSigProj nat (\(n : nat) -> Id bool (gamma n) true) t u (proof t u)
+    where
+    t : (n : nat) * Id bool (gamma n) true = (i , p)
+    u : (n : nat) * Id bool (gamma n) true = (j , q)
+
+f2 (s : type2) : type3 = (s.1 , seq3Extract s.1 s.2)
+g2 (s : type3) : type2 = (s.1 , seq2Extract' s.1 s.2)
+
+equiv2 : Id U type2 type3 =
+  isoId type2 type3 f2 g2
+    (\(p : type3) -> lem binSeq type3Proof seq3Prop (f2 (g2 p)) p (refl binSeq p.1))
+    (\(p : type2) -> lem binSeq type2Proof seq2Prop (g2 (f2 p)) p (refl binSeq p.1))
+
+boolToProp : bool -> Prop = split
+  false -> (N0 , propN0)
+  true  -> (Unit , propUnit)
+
+boolToPropDec : (a : bool) -> dec (boolToProp a).1 = split
+  false -> inr (idfun N0) -- want: dec (boolToProp false).1, which is: dec N0
+  true  -> inl tt -- want: dec (boolToProp true).1, which is: dec Unit
+
+seq3ToSeq4 (gamma : binSeq) (n : nat) : Prop =
+  boolToProp (gamma n)
+
+seq4Extract (gamma : binSeq) (proof : type3Proof gamma) : type4Proof (seq3ToSeq4 gamma) =
+  (decide , propProof)
+    where
+    delta : propSeq = seq3ToSeq4 gamma
+    decide (n : nat) : dec (delta n).1 =
+      boolToPropDec (gamma n)
+    propProof (x y : (n : nat) * (delta n).1) : Id ((n : nat) * (delta n).1) x y =
+      lem nat (\(n : nat) -> (delta n).1) (\(n : nat) -> (delta n).2) x y path
+      where
+      cases (x : (n : nat) * (delta n).1) : (a : bool) -> Id bool (gamma x.1) a -> Id bool (gamma x.1) true = split
+        false -> \(r : Id bool (gamma x.1) false) -> efq (Id bool (gamma x.1) true)
+          (subst bool (\(a : bool) -> (boolToProp a).1) (gamma x.1) false r x.2)
+          -- arg : Id bool (gamma x.1) false
+          -- x.2 : boolToProp (gamma x.1)
+          -- subst bool (\(a : bool) -> (boolToProp a).1) (gamma x.1) false arg x.2 : N0
+        true  -> idfun (Id bool (gamma x.1) true)
+      p : Id bool (gamma x.1) true = cases x (gamma x.1) (refl bool (gamma x.1))
+      q : Id bool (gamma y.1) true = cases y (gamma y.1) (refl bool (gamma y.1))
+      path : Id nat x.1 y.1 = <i> (proof (x.1 , p) (y.1 , q) @ i).1
+      -- need: Id bool (gamma x.1) true
+      -- need: Id bool (gamma y.1) true
+      -- have: x.2 : boolToProp (gamma x.1)
+      -- have: y.2 : boolToProp (gamma y.1)
+      -- split on (gamma x.1),
+      --   true  -> Id bool (gamma x.1) true, done
+      --   false -> Id bool (gamma x.1) false, x.2 : boolToProp false, ie x.2 : N0 (under liftings)
+      -- hence using efq, Id bool (gamma x.1) true
+      -- need : "Id (delta n).1 x.2 y.2"
+      -- ah, but (delta n).2 : prop (delta n).1
+
+decToBool (A : U) : (el : dec A) -> bool = split
+  inl _ -> true
+  inr _ -> false
+
+seq4ToSeq3 (delta : propSeq) (proof : type4Proof delta) (n : nat) : bool =
+  decToBool (delta n).1 (proof.1 n)
+
+{-
+type3Proof (gamma : binSeq) : U = prop ((n : nat) * Id bool (gamma n) true)
+type4Proof (delta : propSeq) : U = and ((n : nat) -> dec (delta n).1) (prop ((n : nat) * (delta n).1))
+-}
+-- seq3Extract' (delta : propSeq) (proof : type4Proof delta) : type3Proof (seq4ToSeq3 delta proof)
+seq3Extract' (delta : propSeq) (proof : type4Proof delta) (x y : (n : nat) * Id bool (seq4ToSeq3 delta proof n) true) : Id ((n : nat) * Id bool (seq4ToSeq3 delta proof n) true) x y =
+  lem nat (\(n : nat) -> Id bool (seq4ToSeq3 delta proof n) true) (\(n : nat) -> boolSet (seq4ToSeq3 delta proof n) true) x y
+    (<i> (proof.2
+      (x.1 , infer x (proof.1 x.1) (refl (dec (delta x.1).1) (proof.1 x.1)))
+      (y.1 , infer y (proof.1 y.1) (refl (dec (delta y.1).1) (proof.1 y.1)))
+      @ i).1)
+    where
+    infer (z : (n : nat) * Id bool (seq4ToSeq3 delta proof n) true) : (el : dec (delta z.1).1) -> Id (dec (delta z.1).1) (proof.1 z.1) el -> (delta z.1).1 = split
+      inl d -> \(_ : Id (dec (delta z.1).1) (proof.1 z.1) (inl d)) -> d
+      inr e -> \(p : Id (dec (delta z.1).1) (proof.1 z.1) (inr e)) ->
+        efq (delta z.1).1 (trueNeqFalse (compIdInv' bool true (seq4ToSeq3 delta proof z.1) false
+          z.2
+          (<i> decToBool (delta z.1).1 (p @ i))
+        ))
+
+f3 (s : type3) : type4 = (seq3ToSeq4 s.1 , seq4Extract s.1 s.2)
+g3 (s : type4) : type3 = (seq4ToSeq3 s.1 s.2 , seq3Extract' s.1 s.2)
+
+equiv3A (s : type3) : Id binSeq (g3 (f3 s)).1 s.1 =
+  funExt nat (\(_ : nat) -> bool) (g3 (f3 s)).1 s.1
+    (\(n : nat) ->
+      cases n (s.1 n) (refl bool (s.1 n))
+    )
+    where
+    cases (n : nat) : (a : bool) -> Id bool (s.1 n) a -> Id bool ((g3 (f3 s)).1 n) a = split
+      false -> \(p : Id bool (s.1 n) false) ->
+        <i> decToBool (boolToProp (p @ i)).1 (boolToPropDec (p @ i))
+        -- need : Id bool (seq4ToSeq3 (seq3ToSeq4 s.1) (seq4Extract s.1 s.2) n) false
+        -- decToBool ((seq3ToSeq4 s.1) n).1 ((seq4Extract s.1 s.2).1 n) == false
+        -- decToBool (boolToProp (s.1 n)).1 (boolToPropDec (s.1 n)) == false
+      true  -> \(p : Id bool (s.1 n) true) ->
+        <i> decToBool (boolToProp (p @ i)).1 (boolToPropDec (p @ i))
+
+equiv3B (s : type4) : Id propSeq (f3 (g3 s)).1 s.1 =
+  funExt nat (\(_ : nat) -> Prop) (f3 (g3 s)).1 s.1
+    (\(n : nat) ->
+      cases n (s.2.1 n) (refl (dec (s.1 n).1) (s.2.1 n))
+    )
+      where
+      cases (n : nat) : (el : dec (s.1 n).1) -> Id (dec (s.1 n).1) (s.2.1 n) el -> Id Prop (boolToProp (decToBool (s.1 n).1 (s.2.1 n))) (s.1 n) = split
+        inl a -> \(p : Id (dec (s.1 n).1) (s.2.1 n) (inl a)) -> compIdInv Prop (boolToProp (decToBool ((s.1 n).1) (s.2.1 n))) (Unit , propUnit) (s.1 n)
+          (<i> boolToProp (decToBool ((s.1 n).1) (p @ i)))
+          (PropLem (s.1 n) (Unit , propUnit) (inhabitedPropIsUnit (s.1 n) a))
+        inr b -> \(p : Id (dec (s.1 n).1) (s.2.1 n) (inr b)) -> compIdInv Prop (boolToProp (decToBool ((s.1 n).1) (s.2.1 n))) (N0 , propN0) (s.1 n)
+          (<i> boolToProp (decToBool ((s.1 n).1) (p @ i)))
+          (PropLem (s.1 n) (N0 , propN0) (uninhabitedPropIsN0 (s.1 n) b))
+      -- cases (n : nat) : (a : bool)
+      -- need : Id Prop (seq3ToSeq4 (g3 s).1 n) (s.1 n)
+      -- seq3ToSeq4 (seq4ToSeq3 s.1 s.2 , seq3Extract' s.1 s.2).1 n == s.1 n
+      -- seq3ToSeq4 (seq4ToSeq3 s.1 s.2) n == s.1 n
+      -- boolToProp (decToBool (s.1 n).1 (s.2.1 n)) == s.1 n
+      -- split on (s.2.1 n)
+      --   inl a -> true  -> Unit, with a : (s.1 n).1
+      -- then:
+      -- derive s.1 n == Unit
+      --   inr b -> false -> N0, with b : (s.1 n).1 -> N0
+      -- then:
+      -- derive s.1 n == N0
+
+equiv3 : Id U type3 type4 =
+  isoId type3 type4 f3 g3
+    (\(p : type4) -> lem propSeq type4Proof seq4Prop (f3 (g3 p)) p (equiv3B p)) -- haha, try replacing these lems with ?
+    (\(p : type3) -> lem binSeq type3Proof seq3Prop (g3 (f3 p)) p (equiv3A p))
 
 
 {-
