@@ -167,3 +167,11 @@ lessEqIneq (m : nat) (n : nat) (t : lessEq (suc m) n) (p : Id nat m n) : N0 =
 add_one : (n : nat) -> Id nat (add (suc zero) n) (suc n) = split
   zero  -> refl nat (suc zero)
   suc m -> <i> suc (add_one m @ i)
+
+
+repeat (A : U) (f : A -> A) : nat -> A -> A = split
+  zero  -> idfun A
+  suc l -> \(x : A) -> f (repeat A f l x)
+repeat_suc (A : U) (f : A -> A) (x : A) :  (n : nat) -> Id A (repeat A f (suc n) x) (repeat A f n (f x)) = split
+  zero  -> refl A (f x)
+  suc l -> <i> f (repeat_suc A f x l @ i)
