@@ -1,0 +1,69 @@
+module lambek where
+
+import prelude
+import functor
+import coalgebra
+
+lambek (F : Functor) (Term : CoalgTerm F)
+  : qInv (coalgObj F (coalgTermCoalg F Term)) (funcObj F (coalgObj F (coalgTermCoalg F Term)))
+    (coalgMor F (coalgTermCoalg F Term)) =
+  ( inverse
+  , ( <i> idIsComp @ -i
+    , compId (FT.1 -> FT.1)
+        (\(x : FT.1) -> T.2 (morph2.1 x))
+        (\(x : FT.1) -> funcMor F FT.1 T.1 morph2.1 (FT.2 x))
+        (idfun FT.1)
+        morph21compId
+        morph21funcId
+    )
+  )
+  where
+    T : Coalg F = coalgTermCoalg F Term
+    Tobj : U = coalgObj F T
+    Tmor : Tobj -> funcObj F Tobj = coalgMor F T
+    proof : coalgTerminalProof F T = coalgTermProof F Term
+    FTobj : U = funcObj F Tobj
+    FTmor : FTobj -> funcObj F FTobj = funcMor F Tobj FTobj Tmor
+    FT : Coalg F =
+      (FTobj , funcMor F Tobj (funcObj F Tobj) Tmor)
+    morph1 : CoalgMorph F T FT =
+      (Tmor , refl (Tobj -> funcObj F (funcObj F Tobj)) (\(x : Tobj) -> FTmor (Tmor x)))
+    morph2 : CoalgMorph F FT T = (proof FT).1
+    inverse : funcObj F Tobj -> Tobj = coalgMorphMor F FT T morph2
+    morph12unique : CoalgMorph F T T = (proof T).1
+    morph12id : CoalgMorph F T T = (idfun Tobj , <i> \(x : Tobj) -> (funcId F Tobj @ -i) (Tmor x))
+    morph12comp : CoalgMorph F T T = coalgComp F T FT T morph1 morph2
+    idIsComp : Id (Tobj -> Tobj) morph12id.1 morph12comp.1 =
+      compIdInv (Tobj -> Tobj)
+        morph12id.1
+        morph12unique.1
+        morph12comp.1
+        ((proof T).2 morph12id)
+        ((proof T).2 morph12comp)
+    morph21comp : FTobj -> FTobj = \(x : FTobj) -> Tmor (morph2.1 x)
+    morph21comp' : FTobj -> FTobj = \(x : FTobj) -> funcMor F FTobj Tobj morph2.1 (FTmor x)
+    morph21compId : Id (FTobj -> FTobj) morph21comp morph21comp' = morph2.2
+    morph21funcId : Id (FTobj -> FTobj) morph21comp' (idfun FTobj) =
+      compId4 (FTobj -> FTobj)
+        morph21comp'
+        (funcMor F Tobj Tobj morph12comp.1)
+        (funcMor F Tobj Tobj (idfun Tobj))
+        (idfun FTobj)
+        (funcComp F Tobj FTobj Tobj morph1.1 morph2.1)
+        (<i> funcMor F Tobj Tobj (idIsComp @ -i))
+        (funcId F Tobj)
+
+
+{-termToTerm' (T : PlusCoalg) (proof : plusTerm T) : plusTerm' T =
+
+  \(B : PlusCoalg) -> ((proof B).1 , (\(H : PlusMorph B T) -> )
+-- PlusMorph B T = (f : B.1 -> T.1) * (Id (B.1 -> plusFuncObj T.1) (\(x : B.1) -> T.2 (f x)) (\(x : B.1) -> (plusFuncMor B.1 T.1 f) (B.2 x)))
+-- need:
+-- (H : PlusMorph B T) -> Id (PlusMorph B T) (proof B).1 H
+-- ie:
+-- p : Id (B.1 -> T.1) (proof B).1.1 H.1
+-- IdP (<i> (B.1 -> plusFuncObj T.1) (\(x : B.1) -> T.2 ((p @ i) x)) (\(x : B.1) -> (plusFuncMor B.1 T.1 (p @ i)) (B.2 x))) (proof B).1.2 H.2
+
+
+{-
+-}

@@ -1,0 +1,261 @@
+module terminal_coalgebra where
+
+import prelude
+import nat
+import bool
+import sigma
+import util
+import coalgebra
+import plusFunctor
+
+-- copied from chain.ctt for efficiency purposes
+binSeq : U = nat -> bool
+type1Proof (alpha : binSeq) : U = (n : nat) -> Id bool (alpha n) false -> Id bool (alpha (suc n)) false
+type1 : U = sig binSeq type1Proof
+
+seq1Prop (alpha : binSeq) : prop (type1Proof alpha) =
+  propPi nat (\(n : nat) -> Id bool (alpha n) false -> Id bool (alpha (suc n)) false)
+    (\(n : nat) ->
+      propPi (Id bool (alpha n) false) (\(p : Id bool (alpha n) false) -> Id bool (alpha (suc n)) false)
+        (\(p : Id bool (alpha n) false) -> boolSet (alpha (suc n)) false)) -- magic happens here
+
+type1genId (m n : type1) (p : Id binSeq m.1 n.1) : Id type1 m n =
+  lem binSeq type1Proof seq1Prop m n p
+binSeqPtwise (alpha beta : binSeq) (f : (k : nat) -> Id bool (alpha k) (beta k)) : Id (nat -> bool) alpha beta =
+  funExt nat (\(_ : nat) -> bool) alpha beta f
+
+-- some basic constructions on type1
+type1zero : type1 = (constfun nat bool false, \(n : nat) -> \(_ : Id bool false false) -> refl bool false)
+type1zeroGen (n : type1) (p : Id bool (n.1 zero) false) : Id type1 n type1zero =
+  type1genId n type1zero
+    (funExt nat (\(_ : nat) -> bool) alpha (constfun nat bool false) induct)
+    where
+    alpha : binSeq = n.1
+    proof : type1Proof alpha = n.2
+    induct : (k : nat) -> Id bool (alpha k) false = split
+      zero  -> p
+      suc l -> proof l (induct l)
+
+-- N^infty is a terminal object in this category, let's define it
+type1predLem (pair : type1) : (a : bool) -> plusFuncObj type1 = split
+  false -> inl tt
+  true  -> inr (\(n : nat) -> alpha (suc n) , \(n : nat) -> \(p : Id bool (alpha (suc n)) false) -> proof (suc n) p)
+    where
+    alpha : binSeq = pair.1
+    proof : type1Proof alpha = pair.2
+type1pred (pair : type1) : plusFuncObj type1 =
+  type1predLem pair (pair.1 zero) -- (refl bool (alpha zero))
+-- successor (goes in the other direction)
+type1suc : plusFuncObj type1 -> type1 = split
+  inl _ -> type1zero
+  inr k -> (induct k , inductProof k)
+    where
+    -- induct k : binSeq
+    induct (k : type1) : (n : nat) -> bool = split
+      zero  -> true
+      suc l -> k.1 l
+    -- inductProof k : type1Proof (induct k)
+    inductProof (k : type1) : (n : nat) -> Id bool (induct k n) false -> Id bool (induct k (suc n)) false = split
+      zero  -> \(p : Id bool (induct k zero) false) -> efq (Id bool (induct k (suc zero)) false) (trueNeqFalse p)
+      suc l -> k.2 l
+type1PSid : (a : plusFuncObj type1) -> Id (plusFuncObj type1) (type1pred (type1suc a)) a = split
+  inl t -> <i> inl (propUnit tt t @ i)
+  inr n -> refl (plusFuncObj type1) (inr n)
+type1SPid (n : type1) : Id type1 (type1suc (type1pred n)) n =
+  cases (alpha zero) (refl bool (alpha zero))
+    where
+    alpha : binSeq = n.1
+    proof : type1Proof alpha = n.2
+    cases : (a : bool) -> Id bool (alpha zero) a -> Id type1 (type1suc (type1pred n)) n = split
+      false -> \(p : Id bool (alpha zero) false) -> compIdInv type1 (type1suc (type1pred n)) type1zero n
+        (<i> type1suc (type1predLem n (p @ i)))
+        (type1zeroGen n p)
+      true  -> \(p : Id bool (alpha zero) true) -> type1genId (type1suc (type1pred n)) n (binSeqPtwise (type1suc (type1pred n)).1 alpha (induct p))
+        where
+        induct (p : Id bool (alpha zero) true) : (k : nat) -> Id bool ((type1suc (type1pred n)).1 k) (alpha k) = split
+          zero  -> compIdInv bool ((type1suc (type1pred n)).1 zero) true (alpha zero)
+            (<i> (type1suc (type1predLem n (p @ i))).1 zero)
+            p
+          suc l -> (<i> (type1suc (type1predLem n (p @ i))).1 (suc l))
+-- if the pred of something is (inl tt), then the something was already zero
+type1predInv (n : type1) (p : Id (plusFuncObj type1) (type1pred n) (inl tt)) : Id bool (n.1 zero) false =
+  cases (alpha zero) (refl bool (alpha zero))
+    where
+    alpha : binSeq = n.1
+    proof : type1Proof alpha = n.2
+    cases : (a : bool) -> Id bool (alpha zero) a -> Id bool (alpha zero) false = split
+      false -> idfun (Id bool (alpha zero) false)
+      true  -> \(q : Id bool (alpha zero) true) -> efq (Id bool (alpha zero) false)
+        (trans Unit N0 (<i> splitUniverse ((compIdInv'
+            (plusFuncObj type1)
+            (inl tt)
+            (type1pred n)
+            (inr (\(n : nat) -> alpha (suc n) , \(n : nat) -> \(r : Id bool (alpha (suc n)) false) -> proof (suc n) r))
+            p
+            (<j> type1predLem n (q @ j))
+          ) @ i)) tt)
+        -- <i> type1predLem n (q @ i) : Id (plusFuncObj type1) (type1pred n) (inr ...)
+        -- (compIdInv (plusFuncObj type1) (inl tt) (type1pred n) (inr (\(n : nat) -> alpha (suc n) , \(n : nat) -> \(r : Id bool (alpha (suc n)) false) -> proof (suc n) p)) p (<i> type1predLem n (q @ i) : Id (plusFuncObj type1) (type1pred n) (inr ...)))
+        --   : Id (plusFuncObj type1) (inl tt) (inr ..)
+        -- splitUniverse* ^ : Id U Unit N0
+        where
+        splitUniverse : plusFuncObj type1 -> U = split
+          inl _ -> Unit
+          inr _ -> N0
+-- type1predInv' (n : type1) (k : type1) (p : Id (plusFuncObj type1) (type1pred n) (inr k)) : Id bool (n.1 zero) true =
+-- N^infty as a coalgebra of 1 + (-)
+nInfty : PlusCoalg = (type1 , type1pred)
+
+liftPlus (A : PlusCoalg) : plusFuncObj A.1 -> plusFuncObj A.1 = split
+  inl t -> inl t -- or tt
+  inr a -> A.2 a
+isRight (A : PlusCoalg) : plusFuncObj A.1 -> bool = split
+  inl _ -> false
+  inr b -> true
+isRightFalse (A : PlusCoalg) : (a : plusFuncObj A.1) -> (p : Id bool (isRight A a) false) -> Id (plusFuncObj A.1) a (inl tt) = split
+  inl t -> \(_ : Id bool false false) ->  <i> inl (propUnit t tt @ i)
+  inr b -> \(p : Id bool true false) -> efq (Id (plusFuncObj A.1) (inr b) (inl tt)) (trueNeqFalse p)
+-- lemma to prove nInfty is indeed terminal: this defines the unique map from B to nInfty
+uniqueMap (B : PlusCoalg) (b : B.1) : type1 =
+  (alpha , proof)
+    where
+    alpha : binSeq =
+      \(n : nat) -> isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc n) (inr b))
+    proof : type1Proof alpha =
+      \(n : nat) -> \(p : Id bool (alpha n) false) ->
+        <i> (isRight B (liftPlus B (isRightFalse B (repeat (plusFuncObj B.1) (liftPlus B) (suc n) (inr b)) p @ i)))
+liftRepeatLem (B : PlusCoalg) (t : Unit) : (n : nat) -> Id (plusFuncObj B.1) (repeat (plusFuncObj B.1) (liftPlus B) n (inl t)) (inl t) = split
+  zero  -> refl (plusFuncObj B.1) (inl t)
+  suc l -> <i> liftPlus B (liftRepeatLem B t l @ i)
+
+morphismExistence (B : PlusCoalg) : coalgMorphismProof Plus B nInfty (uniqueMap B) =
+  funExt B.1 (\(_ : B.1) -> plusFuncObj type1) (\(b : B.1) -> type1pred (uniqueMap B b)) (\(b : B.1) -> plusFuncMor B.1 type1 (uniqueMap B) (B.2 b)) p3
+  where
+    h : B.1 -> type1 = uniqueMap B
+    f : B.1 -> plusFuncObj B.1 = B.2
+    induct : (k : nat) -> (b : B.1) -> Id bool ((h b).1 k) ((type1suc (plusFuncMor B.1 type1 h (f b))).1 k) = split
+      zero  -> \(b : B.1) -> cases b (f b) (refl (plusFuncObj B.1) (f b))
+        where
+        cases (b : B.1) : (a : plusFuncObj B.1) -> Id (plusFuncObj B.1) (f b) a -> Id bool ((h b).1 zero) ((type1suc (plusFuncMor B.1 type1 h (f b))).1 zero) = split
+          inl t -> \(p : Id (plusFuncObj B.1) (f b) (inl t)) -> compIdInv bool ((h b).1 zero) false ((type1suc (plusFuncMor B.1 type1 h (f b))).1 zero)
+            (<i> isRight B (p @ i))
+            (<i> (type1suc (plusFuncMor B.1 type1 h (p @ i))).1 zero)
+          inr n -> \(p : Id (plusFuncObj B.1) (f b) (inr n)) -> compIdInv bool ((h b).1 zero) true ((type1suc (plusFuncMor B.1 type1 h (f b))).1 zero)
+            (<i> isRight B (p @ i))
+            (<i> (type1suc (plusFuncMor B.1 type1 h (p @ i))).1 zero)
+      suc l -> \(b : B.1) -> cases b (f b) (refl (plusFuncObj B.1) (f b))
+        where
+        cases (b : B.1) : (a : plusFuncObj B.1) -> Id (plusFuncObj B.1) (f b) a -> Id bool ((h b).1 (suc l)) ((type1suc (plusFuncMor B.1 type1 h (f b))).1 (suc l)) = split
+          inl t -> \(p : Id (plusFuncObj B.1) (f b) (inl t)) -> compIdInv bool ((h b).1 (suc l)) false ((type1suc (plusFuncMor B.1 type1 h (f b))).1 (suc l))
+            (compId bool ((h b).1 (suc l)) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (inl t))) false
+              (compId bool ((h b).1 (suc l)) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (f b))) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (inl t)))
+              r0
+              (r1 p)
+              )
+              r2
+            )
+            (r3 p)
+            where
+            r0 : Id bool ((h b).1 (suc l)) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (f b))) =
+              <i> isRight B (repeat_suc (plusFuncObj B.1) (liftPlus B) (inr b) (suc l) @ i)
+            r1 (p : Id (plusFuncObj B.1) (f b) (inl t)) : Id bool (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (f b))) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (inl t))) =
+              <i> isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (p @ i))
+            r2 : Id bool (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (inl t))) false =
+              <i> isRight B (liftRepeatLem B t (suc l) @ i)
+            r3 (p : Id (plusFuncObj B.1) (f b) (inl t)) : Id bool ((type1suc (plusFuncMor B.1 type1 h (f b))).1 (suc l)) false =
+              <i> (type1suc (plusFuncMor B.1 type1 h (p @ i))).1 (suc l)
+
+          inr n -> \(p : Id (plusFuncObj B.1) (f b) (inr n)) -> compId bool ((h b).1 (suc l)) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (liftPlus B (inr b)))) ((type1suc (plusFuncMor B.1 type1 h (f b))).1 (suc l))
+            r0
+            (compIdInv bool (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (liftPlus B (inr b)))) ((h n).1 l) ((type1suc (plusFuncMor B.1 type1 h (f b))).1 (suc l))
+              (r1 p)
+              (r2 p)
+            )
+            where
+            r0 : Id bool ((h b).1 (suc l)) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (f b))) =
+              <i> isRight B (repeat_suc (plusFuncObj B.1) (liftPlus B) (inr b) (suc l) @ i)
+            r1 (p : Id (plusFuncObj B.1) (f b) (inr n)) : Id bool (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (liftPlus B (inr b)))) ((h n).1 l) =
+              <i> isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (p @ i))
+            r2 (p : Id (plusFuncObj B.1) (f b) (inr n)) : Id bool ((type1suc (plusFuncMor B.1 type1 h (f b))).1 (suc l)) ((h n).1 l) =
+              <i> (type1suc (plusFuncMor B.1 type1 h (p @ i))).1 (suc l)
+
+    p0 (b : B.1) : Id binSeq (h b).1 (type1suc (plusFuncMor B.1 type1 h (f b))).1 =
+      binSeqPtwise (h b).1 (type1suc (plusFuncMor B.1 type1 h (f b))).1 (\(k : nat) -> induct k b)
+    p1 (b : B.1) : Id type1 (h b) (type1suc (plusFuncMor B.1 type1 h (f b))) =
+      type1genId (h b) (type1suc (plusFuncMor B.1 type1 h (f b))) (p0 b)
+    p2 (b : B.1) : Id (plusFuncObj type1) (type1pred (h b)) (type1pred (type1suc (plusFuncMor B.1 type1 h (f b)))) =
+      <i> type1pred (p1 b @ i)
+    p3 (b : B.1) : Id (plusFuncObj type1) (type1pred (h b)) (plusFuncMor B.1 type1 h (f b)) =
+      compId (plusFuncObj type1)
+        (type1pred (h b))
+        (type1pred (type1suc (plusFuncMor B.1 type1 h (f b))))
+        (plusFuncMor B.1 type1 h (f b))
+        (p2 b)
+        (type1PSid (plusFuncMor B.1 type1 h (f b)))
+
+morphismUniqueness (B : PlusCoalg) (g : B.1 -> type1) (comm : coalgMorphismProof Plus B nInfty g) : Id (B.1 -> type1) g (uniqueMap B) =
+  funExt B.1 (\(_ : B.1) -> type1) g h p1
+    where
+    f : B.1 -> plusFuncObj B.1 = B.2
+    h : B.1 -> type1 = uniqueMap B
+    comm' (b : B.1) (k : nat) : Id bool ((g b).1 k) ((type1suc (plusFuncMor B.1 type1 g (f b))).1 k) =
+      compIdInv' bool ((g b).1 k) ((type1suc (type1pred (g b))).1 k) ((type1suc (plusFuncMor B.1 type1 g (f b))).1 k)
+        (<i> (type1SPid (g b) @ i).1 k)
+        (<i> (type1suc (comm @ i b)).1 k)
+    cases (k : nat) (b : B.1) : (a : plusFuncObj B.1) -> Id (plusFuncObj B.1) (f b) a -> Id bool ((g b).1 k) ((h b).1 k) = split
+      inl t -> \(p : Id (plusFuncObj B.1) (f b) (inl t)) -> compIdInv bool ((g b).1 k) false ((h b).1 k)
+        (compId bool ((g b).1 k) ((type1suc (plusFuncMor B.1 type1 g (f b))).1 k) false
+          (comm' b k)
+          (<i> ((type1suc (plusFuncMor B.1 type1 g (p @ i))).1 k))
+        )
+        (compId bool ((h b).1 k) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (inl t))) false
+          (compId bool ((h b).1 k) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (f b))) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (inl t)))
+            r0
+            (r1 p)
+            )
+          r2
+
+        )
+        where
+          r0 : Id bool ((h b).1 k) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (f b))) =
+            <i> isRight B (repeat_suc (plusFuncObj B.1) (liftPlus B) (inr b) k @ i)
+          r1 (p : Id (plusFuncObj B.1) (f b) (inl t)) : Id bool (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (f b))) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (inl t))) =
+            <i> isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (p @ i))
+          r2 : Id bool (isRight B (repeat (plusFuncObj B.1) (liftPlus B) k (inl t))) false =
+            <i> isRight B (liftRepeatLem B t k @ i)
+      inr n -> \(p : Id (plusFuncObj B.1) (f b) (inr n)) ->
+        induct p k
+        where
+        induct (p : Id (plusFuncObj B.1) (f b) (inr n)) : (k : nat) -> Id bool ((g b).1 k) ((h b).1 k) = split
+          zero  -> compIdInv bool ((g b).1 zero) true ((h b).1 zero)
+            (compId bool ((g b).1 zero) ((type1suc (plusFuncMor B.1 type1 g (f b))).1 zero) true
+              (comm' b zero)
+              (<i> ((type1suc (plusFuncMor B.1 type1 g (p @ i))).1 zero))
+            )
+            (<i> isRight B (p @ i))
+            -- comm' b zero : Id bool ((g b).1 zero) ((type1suc (plusFuncMor B.1 type1 g (f b))).1 zero)
+            -- lift p ->
+            --   Id bool ((type1suc (plusFuncMor B.1 type1 g (f b))).1 zero) true
+            -- h b zero = isRight (f b), so lift p -> true
+          suc l -> compId bool ((g b).1 (suc l)) ((g n).1 l) ((h b).1 (suc l))
+            (compId bool ((g b).1 (suc l)) ((type1suc (plusFuncMor B.1 type1 g (f b))).1 (suc l)) ((g n).1 l)
+              (comm' b (suc l))
+              (<i> (type1suc (plusFuncMor B.1 type1 g (p @ i))).1 (suc l))
+            )
+            (compIdInv bool ((g n).1 l) ((h n).1 l) ((h b).1 (suc l))
+              (cases l n (f n) (refl (plusFuncObj B.1) (f n)))
+              (compId bool ((h b).1 (suc l)) (isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (f b))) ((h n).1 l)
+                (<i> isRight B (repeat_suc (plusFuncObj B.1) (liftPlus B) (inr b) (suc l) @ i))
+                (<i> isRight B (repeat (plusFuncObj B.1) (liftPlus B) (suc l) (p @ i)))
+              )
+            )
+    p0 (b : B.1) : Id binSeq (g b).1 (h b).1 =
+      binSeqPtwise (g b).1 (h b).1 (\(k : nat) -> cases k b (f b) (refl (plusFuncObj B.1) (f b)))
+    p1 (b : B.1) : Id type1 (g b) (h b) =
+      type1genId (g b) (h b) (p0 b)
+
+nInftyTerminal : PlusTerm =
+  (nInfty , \(B : PlusCoalg) -> ((uniqueMap B , morphismExistence B) , \(H : PlusMorph B nInfty) -> morphismUniqueness B H.1 H.2))
+
+{-
+-}

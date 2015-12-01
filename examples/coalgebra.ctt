@@ -1,0 +1,72 @@
+module coalgebra where
+
+import prelude
+import functor
+
+Coalg (F : Functor) : U = (X : U) * (X -> funcObj F X)
+coalgObj (F : Functor) (A : Coalg F) : U = A.1
+coalgMor (F : Functor) (A : Coalg F) : (coalgObj F A) -> (funcObj F (coalgObj F A)) = A.2
+lift (F : Functor) (A B : Coalg F) (f : coalgObj F A -> coalgObj F B)
+  : (funcObj F (coalgObj F A)) -> (funcObj F (coalgObj F B)) =
+  funcMor F (coalgObj F A) (coalgObj F B) f
+coalgMorphismProof (F : Functor) (A B : Coalg F) (f : coalgObj F A -> coalgObj F B) : U =
+  ( Id (coalgObj F A -> funcObj F (coalgObj F B))
+    (\(a : coalgObj F A) -> coalgMor F B (f a))
+    (\(a : coalgObj F A) -> lift F A B f (coalgMor F A a))
+  )
+CoalgMorph (F : Functor) (A B : Coalg F) : U =
+  (f : coalgObj F A -> coalgObj F B)
+  *
+  (coalgMorphismProof F A B f)
+coalgMorphMor (F : Functor) (A B : Coalg F) (G : CoalgMorph F A B) : coalgObj F A -> coalgObj F B = G.1
+coalgMorphProof (F : Functor) (A B : Coalg F) (G : CoalgMorph F A B)
+  : ( Id (coalgObj F A -> funcObj F (coalgObj F B))
+    (\(a : coalgObj F A) -> coalgMor F B (coalgMorphMor F A B G a))
+    (\(a : coalgObj F A) -> lift F A B (coalgMorphMor F A B G) (coalgMor F A a))
+  )
+  = G.2
+coalgLift (F : Functor) (A B : Coalg F) (G : CoalgMorph F A B)
+  : (funcObj F (coalgObj F A)) -> (funcObj F (coalgObj F B)) =
+  lift F A B (coalgMorphMor F A B G)
+coalgTerminalProof (F : Functor) (T : Coalg F) : U =
+  ((B : Coalg F) ->
+    (G : CoalgMorph F B T)
+    *
+    ( (H : CoalgMorph F B T)
+      ->
+      (Id (coalgObj F B -> coalgObj F T)
+        (coalgMorphMor F B T H)
+        (coalgMorphMor F B T G)
+      )
+    )
+  )
+CoalgTerm (F : Functor) : U =
+  (T : Coalg F)
+  *
+  (coalgTerminalProof F T)
+coalgTermCoalg (F : Functor) (Term : CoalgTerm F) : Coalg F = Term.1
+coalgTermProof (F : Functor) (Term : CoalgTerm F)
+ : coalgTerminalProof F (coalgTermCoalg F Term)
+  = Term.2
+
+coalgComp (F : Functor) (A B C : Coalg F) (G : CoalgMorph F A B) (H : CoalgMorph F B C) : CoalgMorph F A C =
+  ( \(x : Aobj) -> coalgMorphMor F B C H (coalgMorphMor F A B G x)
+  , compId4 (Aobj -> funcObj F Cobj)
+      (\(x : Aobj) -> Cmor (Hmor (Gmor x)))
+      (\(x : Aobj) -> lift F B C Hmor (Bmor (Gmor x)))
+      (\(x : Aobj) -> lift F B C Hmor (lift F A B Gmor (Amor x)))
+      (\(x : Aobj) -> lift F A C HGmor (Amor x))
+      (<i> \(x : Aobj) -> coalgMorphProof F B C H @ i (Gmor x))
+      (<i> \(x : Aobj) -> lift F B C Hmor (coalgMorphProof F A B G @ i x))
+      (<i> \(x : Aobj) -> funcComp F Aobj Bobj Cobj Gmor Hmor @ i (Amor x))
+  )
+  where
+    Aobj : U = coalgObj F A
+    Amor : Aobj -> funcObj F Aobj = coalgMor F A
+    Bobj : U = coalgObj F B
+    Bmor : Bobj -> funcObj F Bobj = coalgMor F B
+    Cobj : U = coalgObj F C
+    Cmor : Cobj -> funcObj F Cobj = coalgMor F C
+    Gmor : Aobj -> Bobj = coalgMorphMor F A B G
+    Hmor : Bobj -> Cobj = coalgMorphMor F B C H
+    HGmor : Aobj -> Cobj = \(y : Aobj) -> Hmor (Gmor y)

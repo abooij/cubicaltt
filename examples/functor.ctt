@@ -1,0 +1,20 @@
+module functor where
+
+import prelude
+
+functorObj : U = U -> U
+functorMor (Fobj : functorObj) : U =
+  (X Y : U) -> (f : X -> Y) -> (Fobj X -> Fobj Y)
+functorComp (Fobj : functorObj) (Fmor : functorMor Fobj) : U =
+  (X Y Z : U) -> (f : X -> Y) -> (g : Y -> Z)
+  -> Id (Fobj X -> Fobj Z)
+      (\(x : Fobj X) -> Fmor Y Z g (Fmor X Y f x))
+      (Fmor X Z (\(x : X) -> g (f x)))
+functorId (Fobj : functorObj) (Fmor : functorMor Fobj) : U =
+  (X : U) -> Id (Fobj X -> Fobj X) (Fmor X X (idfun X)) (idfun (Fobj X))
+Functor : U = (Fobj : functorObj) * (Fmor : functorMor Fobj) * (p : functorComp Fobj Fmor) * (functorId Fobj Fmor)
+
+funcObj (F : Functor) : functorObj = F.1
+funcMor (F : Functor) : functorMor (funcObj F) = F.2.1
+funcComp (F : Functor) : functorComp (funcObj F) (funcMor F) = F.2.2.1
+funcId (F : Functor) : functorId (funcObj F) (funcMor F) = F.2.2.2

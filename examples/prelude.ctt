@@ -271,3 +271,18 @@ inhabitedPropIsUnit (A : Prop) (x : A.1) : Id U A.1 Unit =
 
 uninhabitedPropIsN0 (A : Prop) (f : A.1 -> N0) : Id U A.1 N0 =
   isoId A.1 N0 f (efq A.1) (\(y : N0) -> efq (Id N0 (f (efq A.1 y)) y) y) (\(y : A.1) -> A.2 (efq A.1 (f y)) y)
+
+compId4 (A : U) (a b c d : A) (p : Id A a b) (q : Id A b c) (r : Id A c d) : Id A a d =
+  compId A a b d p (compId A b c d q r)
+
+qInv (A B : U) (f : A -> B) : U =
+  (g : B -> A) * (and
+    (Id (A -> A)
+      (\(a : A) -> g (f a))
+      (idfun A)
+    )
+    (Id (B -> B)
+      (\(b : B) -> f (g b))
+      (idfun B)
+    )
+  )

@@ -1,0 +1,38 @@
+module plusFunctor where
+
+import prelude
+import functor
+import coalgebra
+
+-- define the 1 + (-) functor
+plusFuncObj (X : U) : U = or Unit X
+plusFuncMor (X : U) (Y : U) (f : X -> Y) : plusFuncObj X -> plusFuncObj Y = split
+  inl t -> inl t
+  inr x -> inr (f x)
+
+plusFuncId (X : U) : Id (plusFuncObj X -> plusFuncObj X) (plusFuncMor X X (idfun X)) (idfun (plusFuncObj X)) =
+  <i> \(x : plusFuncObj X) -> induct x @ i
+    where
+    induct : (x : plusFuncObj X) -> Id (plusFuncObj X) (plusFuncMor X X (idfun X) x) x = split
+      inl t -> refl (plusFuncObj X) (inl t)
+      inr x -> refl (plusFuncObj X) (inr x)
+plusFuncComp (X Y Z : U) (f : X -> Y) (g : Y -> Z) : Id (plusFuncObj X -> plusFuncObj Z)
+  (\(x : plusFuncObj X) -> plusFuncMor Y Z g (plusFuncMor X Y f x))
+  (\(x : plusFuncObj X) -> plusFuncMor X Z (\(y : X) -> g (f y)) x)
+  =
+  <i> \(x : plusFuncObj X) -> induct x @ i
+    where
+    induct : (x : plusFuncObj X) -> Id (plusFuncObj Z) (plusFuncMor Y Z g (plusFuncMor X Y f x)) (plusFuncMor X Z (\(y : X) -> g (f y)) x) = split
+      inl t -> refl (plusFuncObj Z) (inl t)
+      inr x -> refl (plusFuncObj Z) (inr (g (f x)))
+
+Plus : Functor =
+  ( plusFuncObj
+  ,(plusFuncMor
+  ,(plusFuncComp
+  , plusFuncId
+  )))
+
+PlusCoalg : U = Coalg Plus
+PlusMorph (A : PlusCoalg) (B : PlusCoalg) : U = CoalgMorph Plus A B
+PlusTerm : U = CoalgTerm Plus
